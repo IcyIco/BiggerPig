@@ -28,3 +28,8 @@ sysinfo.txt
 *.apk
 *.aab
 *.unitypackage
+/.vsconfig
+*.slnx
+/Backup/
+UpgradeLog.htm
+/windows/
