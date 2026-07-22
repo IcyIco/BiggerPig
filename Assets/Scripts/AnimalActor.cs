@@ -6,56 +6,33 @@ using UnityEngine;
 [RequireComponent(typeof(AnimalMovement))]
 public sealed class AnimalActor : MonoBehaviour
 {
-    [Header("References")]
+    private const float MinimumScaleAdvantage = 1f;
+    private const float MinimumTotalScale = 0.5f;
+    private const float StunDuration = 1.5f;
+    private const float HitProtectionDuration = 0.5f;
+    private const float KnockbackForce = 4f;
+
+    private const float CarrotSpawnHeight = 0.6f;
+    private const float CarrotSpawnRadius = 0.7f;
+    private const float MinimumHorizontalSpeed = 2.5f;
+    private const float MaximumHorizontalSpeed = 5f;
+    private const float MinimumUpwardSpeed = 3f;
+    private const float MaximumUpwardSpeed = 5f;
+    private const int CarrotsPerFrame = 10;
+
     [SerializeField] private Transform modelSlot;
     [SerializeField] private CarrotFood carrotPrefab;
-
-    [Header("Hit")]
-    [SerializeField] private float minimumScaleAdvantage = 1f;
-    [SerializeField] private float minimumTotalScale = 0.5f;
-    [SerializeField] private float stunDuration = 1.5f;
-    [SerializeField] private float hitProtectionDuration = 0.5f;
-    [SerializeField] private float knockbackForce = 4f;
-
-    [Header("Carrot Scatter")]
-    [SerializeField] private float carrotSpawnHeight = 0.6f;
-    [SerializeField] private float carrotSpawnRadius = 0.7f;
-    [SerializeField]
-    private Vector2 horizontalSpeedRange =
-        new Vector2(2.5f, 5f);
-    [SerializeField]
-    private Vector2 upwardSpeedRange =
-        new Vector2(3f, 5f);
-
-    private static readonly Vector3 BaseColliderSize =
-        new Vector3(1f, 1.3f, 1f);
-
-    private static readonly Vector3 BaseColliderCenter =
-        new Vector3(0f, 0.6f, 0f);
 
     private BoxCollider boxCollider;
     private Rigidbody rb;
     private AnimalMovement movement;
     private GameObject modelInstance;
     private Animator animator;
+    private Vector3 baseColliderSize;
+    private Vector3 baseColliderCenter;
     private bool hitProtected;
 
-    public AnimalDefinition Definition { get; private set; }
-
-    public float GrowthScale { get; private set; } = 1f;
-
-    public float TotalScale
-    {
-        get
-        {
-            if (Definition == null)
-            {
-                return GrowthScale;
-            }
-
-            return Definition.scale * GrowthScale;
-        }
-    }
+    public float TotalScale { get; private set; }
 
     private void Awake()
     {
@@ -63,73 +40,51 @@ public sealed class AnimalActor : MonoBehaviour
         rb = GetComponent<Rigidbody>();
         movement = GetComponent<AnimalMovement>();
 
-        if (modelSlot == null)
-        {
-            modelSlot = transform.Find("ModelSlot");
-        }
+        baseColliderSize = boxCollider.size;
+        baseColliderCenter = boxCollider.center;
 
         if (modelSlot == null)
         {
-            Debug.LogError(
-                "AnimalActor: ModelSlot is missing.",
-                this
-            );
-
+            Debug.LogError("AnimalActor: ModelSlot is missing.", this);
             enabled = false;
         }
     }
 
     public void SetAnimal(AnimalDefinition definition)
     {
+        if (modelSlot == null)
+        {
+            return;
+        }
+
         if (definition == null)
         {
-            Debug.LogError(
-                "AnimalActor: Animal definition is missing.",
-                this
-            );
-
+            Debug.LogError("AnimalActor: Animal definition is missing.", this);
             return;
         }
 
         if (definition.modelPrefab == null)
         {
-            Debug.LogError(
-                "AnimalActor: Model prefab is missing.",
-                this
-            );
-
+            Debug.LogError("AnimalActor: Model prefab is missing.", this);
             return;
         }
 
         if (definition.animatorController == null)
         {
-            Debug.LogError(
-                "AnimalActor: Animator controller is missing.",
-                this
-            );
-
+            Debug.LogError("AnimalActor: Animator controller is missing.", this);
             return;
         }
 
         ClearModel();
 
-        Definition = definition;
-        GrowthScale = 1f;
-        hitProtected = false;
-
-        modelInstance = Instantiate(
-            definition.modelPrefab,
-            modelSlot
-        );
-
-        modelInstance.name = definition.displayName;
+        modelInstance = Instantiate(definition.modelPrefab, modelSlot);
         modelInstance.transform.localPosition = Vector3.zero;
         modelInstance.transform.localRotation = Quaternion.identity;
 
+        TotalScale = definition.scale;
         ApplyScale();
 
-        animator =
-            modelInstance.GetComponentInChildren<Animator>(true);
+        animator = modelInstance.GetComponentInChildren<Animator>(true);
 
         if (animator == null)
         {
@@ -152,36 +107,19 @@ public sealed class AnimalActor : MonoBehaviour
         movement.SetAnimator(animator);
     }
 
-    public void SetGrowthScale(float scale)
+    public void AddTotalScale(float amount)
     {
-        GrowthScale = Mathf.Max(0.01f, scale);
-        ApplyScale();
-    }
-
-    public void SetTotalScale(float totalScale)
-    {
-        if (Definition == null)
+        if (modelInstance == null)
         {
             return;
         }
 
-        float safeScale =
-            Mathf.Max(minimumTotalScale, totalScale);
-
-        GrowthScale =
-            safeScale / Definition.scale;
+        TotalScale = Mathf.Max(
+            MinimumTotalScale,
+            TotalScale + amount
+        );
 
         ApplyScale();
-    }
-
-    public void AddTotalScale(float amount)
-    {
-        SetTotalScale(TotalScale + amount);
-    }
-
-    public void Grow(float amount)
-    {
-        AddTotalScale(amount);
     }
 
     private void OnCollisionEnter(Collision collision)
@@ -194,10 +132,8 @@ public sealed class AnimalActor : MonoBehaviour
             return;
         }
 
-        float scaleDifference =
-            TotalScale - otherActor.TotalScale;
-
-        if (scaleDifference < minimumScaleAdvantage)
+        if (TotalScale - otherActor.TotalScale <
+            MinimumScaleAdvantage)
         {
             return;
         }
@@ -205,13 +141,9 @@ public sealed class AnimalActor : MonoBehaviour
         Vector3 knockbackDirection =
             otherActor.transform.position - transform.position;
 
-        bool hitSucceeded =
-            otherActor.TryReceiveHit(
+        if (!otherActor.TryReceiveHit(
                 knockbackDirection,
-                out float lostScale
-            );
-
-        if (!hitSucceeded)
+                out float lostScale))
         {
             return;
         }
@@ -219,68 +151,58 @@ public sealed class AnimalActor : MonoBehaviour
         if (carrotPrefab == null)
         {
             Debug.LogError(
-                "AnimalActor: Carrot prefab is missing. The hit worked, but no carrots were spawned.",
+                "AnimalActor: Carrot prefab is missing.",
                 this
             );
 
             return;
         }
 
-        int carrotCount =
-            Mathf.RoundToInt(
-                lostScale / CarrotFood.ScaleValue
-            );
-
-        if (carrotCount <= 0)
-        {
-            return;
-        }
-
-        StartCoroutine(
-            ScatterCarrotsRoutine(
-                otherActor.transform.position,
-                carrotCount
-            )
+        int carrotCount = Mathf.RoundToInt(
+            lostScale / CarrotFood.ScaleValue
         );
+
+        if (carrotCount > 0)
+        {
+            StartCoroutine(
+                ScatterCarrotsRoutine(
+                    otherActor.transform.position,
+                    carrotCount
+                )
+            );
+        }
     }
 
     private bool TryReceiveHit(
         Vector3 knockbackDirection,
-        out float lostScale
-    )
+        out float lostScale)
     {
         lostScale = 0f;
 
-        if (hitProtected || Definition == null)
+        if (hitProtected || modelInstance == null)
         {
             return false;
         }
 
-        float oldScale = TotalScale;
-
-        if (oldScale <= minimumTotalScale + 0.001f)
+        if (TotalScale <= MinimumTotalScale + 0.001f)
         {
             return false;
         }
 
-        lostScale =
-            oldScale - minimumTotalScale;
+        lostScale = TotalScale - MinimumTotalScale;
+        TotalScale = MinimumTotalScale;
 
-        SetTotalScale(minimumTotalScale);
+        ApplyScale();
 
         hitProtected = true;
-
-        StartCoroutine(
-            StunRoutine(knockbackDirection)
-        );
+        StartCoroutine(StunRoutine(knockbackDirection));
 
         return true;
     }
 
-    private IEnumerator StunRoutine(
-        Vector3 knockbackDirection
-    )
+    private IEnumerator StunRoutine(Vector3 knockbackDirection)
     {
+        // Temporarily hand movement over to physics.
         movement.SetMoveInput(Vector2.zero);
         movement.SetSprinting(false);
         movement.enabled = false;
@@ -290,11 +212,10 @@ public sealed class AnimalActor : MonoBehaviour
             animator.speed = 0f;
         }
 
-        knockbackDirection =
-            Vector3.ProjectOnPlane(
-                knockbackDirection,
-                Vector3.up
-            );
+        knockbackDirection = Vector3.ProjectOnPlane(
+            knockbackDirection,
+            Vector3.up
+        );
 
         if (knockbackDirection.sqrMagnitude < 0.001f)
         {
@@ -307,12 +228,12 @@ public sealed class AnimalActor : MonoBehaviour
         rb.angularVelocity = Vector3.zero;
 
         rb.AddForce(
-            knockbackDirection * knockbackForce
-            + Vector3.up * knockbackForce * 0.25f,
+            knockbackDirection * KnockbackForce
+            + Vector3.up * KnockbackForce * 0.25f,
             ForceMode.VelocityChange
         );
 
-        yield return new WaitForSeconds(stunDuration);
+        yield return new WaitForSeconds(StunDuration);
 
         rb.linearVelocity = Vector3.zero;
         rb.angularVelocity = Vector3.zero;
@@ -325,7 +246,7 @@ public sealed class AnimalActor : MonoBehaviour
         movement.enabled = true;
 
         yield return new WaitForSeconds(
-            hitProtectionDuration
+            HitProtectionDuration
         );
 
         hitProtected = false;
@@ -333,13 +254,11 @@ public sealed class AnimalActor : MonoBehaviour
 
     private IEnumerator ScatterCarrotsRoutine(
         Vector3 center,
-        int carrotCount
-    )
+        int carrotCount)
     {
         for (int i = 0; i < carrotCount; i++)
         {
-            Vector2 circle =
-                Random.insideUnitCircle;
+            Vector2 circle = Random.insideUnitCircle;
 
             if (circle.sqrMagnitude < 0.001f)
             {
@@ -349,44 +268,37 @@ public sealed class AnimalActor : MonoBehaviour
             circle.Normalize();
 
             Vector3 horizontalDirection =
-                new Vector3(
-                    circle.x,
-                    0f,
-                    circle.y
-                );
+                new Vector3(circle.x, 0f, circle.y);
 
             Vector3 spawnPosition =
                 center
-                + Vector3.up * carrotSpawnHeight
+                + Vector3.up * CarrotSpawnHeight
                 + horizontalDirection
-                * Random.Range(0f, carrotSpawnRadius);
+                * Random.Range(0f, CarrotSpawnRadius);
 
-            CarrotFood carrot =
-                Instantiate(
-                    carrotPrefab,
-                    spawnPosition,
-                    Random.rotation
-                );
+            CarrotFood carrot = Instantiate(
+                carrotPrefab,
+                spawnPosition,
+                Random.rotation
+            );
 
-            float horizontalSpeed =
-                Random.Range(
-                    horizontalSpeedRange.x,
-                    horizontalSpeedRange.y
-                );
+            float horizontalSpeed = Random.Range(
+                MinimumHorizontalSpeed,
+                MaximumHorizontalSpeed
+            );
 
-            float upwardSpeed =
-                Random.Range(
-                    upwardSpeedRange.x,
-                    upwardSpeedRange.y
-                );
+            float upwardSpeed = Random.Range(
+                MinimumUpwardSpeed,
+                MaximumUpwardSpeed
+            );
 
-            Vector3 launchVelocity =
+            carrot.Launch(
                 horizontalDirection * horizontalSpeed
-                + Vector3.up * upwardSpeed;
+                + Vector3.up * upwardSpeed
+            );
 
-            carrot.Launch(launchVelocity);
-
-            if ((i + 1) % 10 == 0)
+            // Limit large drops to ten carrots per frame.
+            if ((i + 1) % CarrotsPerFrame == 0)
             {
                 yield return null;
             }
@@ -400,37 +312,28 @@ public sealed class AnimalActor : MonoBehaviour
             return;
         }
 
-        float scale = TotalScale;
-
         modelInstance.transform.localScale =
-            Vector3.one * scale;
+            Vector3.one * TotalScale;
 
         boxCollider.size =
-            BaseColliderSize * scale;
+            baseColliderSize * TotalScale;
 
         boxCollider.center =
-            BaseColliderCenter * scale;
+            baseColliderCenter * TotalScale;
     }
 
     private void ClearModel()
     {
-        if (modelSlot == null)
-        {
-            return;
-        }
-
         for (int i = modelSlot.childCount - 1;
              i >= 0;
              i--)
         {
-            Destroy(
-                modelSlot.GetChild(i).gameObject
-            );
+            Destroy(modelSlot.GetChild(i).gameObject);
         }
 
         modelInstance = null;
         animator = null;
-        Definition = null;
+        TotalScale = 0f;
 
         movement.SetAnimator(null);
     }

@@ -1,32 +1,24 @@
-using System;
 using UnityEngine;
 
 [RequireComponent(typeof(AnimalMovement))]
 [RequireComponent(typeof(AnimalActor))]
 public sealed class AnimalAI : MonoBehaviour
 {
-    [Header("Sight")]
-    [SerializeField] private float sightRadius = 12f;
-    [SerializeField] private float targetLostDistance = 15f;
-    [SerializeField] private float searchInterval = 0.25f;
+    private const float SightRadius = 12f;
+    private const float TargetLostDistance = 15f;
+    private const float SearchInterval = 0.25f;
 
-    [Header("Decision Timing")]
-    [SerializeField] private float minimumDuration = 1.5f;
-    [SerializeField] private float maximumDuration = 4f;
-
-    [Header("Wander")]
-    [Range(0f, 1f)]
-    [SerializeField] private float idleChance = 0.25f;
-
-    [Range(0f, 1f)]
-    [SerializeField] private float sprintChance = 0.1f;
+    private const float MinimumWanderDuration = 1.5f;
+    private const float MaximumWanderDuration = 4f;
+    private const float IdleChance = 0.25f;
+    private const float SprintChance = 0.1f;
 
     private AnimalMovement movement;
     private AnimalActor actor;
 
     private Transform target;
     private float searchTimer;
-    private float remainingTime;
+    private float wanderTimer;
 
     private void Awake()
     {
@@ -37,18 +29,14 @@ public sealed class AnimalAI : MonoBehaviour
     private void Start()
     {
         ChooseWanderAction();
-        searchTimer = UnityEngine.Random.Range(0f, searchInterval);
+
+        // Spread searches across different frames.
+        searchTimer = Random.Range(0f, SearchInterval);
     }
 
     private void Update()
     {
         searchTimer -= Time.deltaTime;
-
-        if (searchTimer <= 0f)
-        {
-            searchTimer = searchInterval;
-            target = FindTarget();
-        }
 
         if (target != null && IsTargetValid(target))
         {
@@ -57,6 +45,19 @@ public sealed class AnimalAI : MonoBehaviour
         }
 
         target = null;
+
+        if (searchTimer <= 0f)
+        {
+            searchTimer = SearchInterval;
+            target = FindTarget();
+        }
+
+        if (target != null)
+        {
+            MoveToTarget();
+            return;
+        }
+
         UpdateWander();
     }
 
@@ -64,7 +65,7 @@ public sealed class AnimalAI : MonoBehaviour
     {
         Collider[] nearbyObjects = Physics.OverlapSphere(
             transform.position,
-            sightRadius,
+            SightRadius,
             ~0,
             QueryTriggerInteraction.Collide
         );
@@ -74,6 +75,9 @@ public sealed class AnimalAI : MonoBehaviour
 
         Transform nearestTree = null;
         float nearestTreeDistance = float.PositiveInfinity;
+
+        bool canEatTrees =
+            actor.TotalScale >= TreeFood.RequiredScale;
 
         foreach (Collider nearbyCollider in nearbyObjects)
         {
@@ -90,20 +94,19 @@ public sealed class AnimalAI : MonoBehaviour
 
             if (carrot != null)
             {
-                float distance =
+                float carrotDistance =
                     GetFlatSqrDistance(carrot.transform.position);
 
-                if (distance < nearestCarrotDistance
-                    && IsVisible(carrot.transform))
+                if (carrotDistance < nearestCarrotDistance)
                 {
-                    nearestCarrotDistance = distance;
+                    nearestCarrotDistance = carrotDistance;
                     nearestCarrot = carrot.transform;
                 }
 
                 continue;
             }
 
-            if (actor.TotalScale < TreeFood.RequiredScale)
+            if (!canEatTrees)
             {
                 continue;
             }
@@ -119,20 +122,17 @@ public sealed class AnimalAI : MonoBehaviour
             float treeDistance =
                 GetFlatSqrDistance(tree.transform.position);
 
-            if (treeDistance < nearestTreeDistance
-                && IsVisible(tree.transform))
+            if (treeDistance < nearestTreeDistance)
             {
                 nearestTreeDistance = treeDistance;
                 nearestTree = tree.transform;
             }
         }
 
-        if (nearestCarrot != null)
-        {
-            return nearestCarrot;
-        }
-
-        return nearestTree;
+        // Carrots take priority over trees.
+        return nearestCarrot != null
+            ? nearestCarrot
+            : nearestTree;
     }
 
     private bool IsTargetValid(Transform currentTarget)
@@ -143,29 +143,22 @@ public sealed class AnimalAI : MonoBehaviour
         }
 
         float maximumDistance =
-            targetLostDistance * targetLostDistance;
+            TargetLostDistance * TargetLostDistance;
 
-        if (GetFlatSqrDistance(currentTarget.position)
-            > maximumDistance)
+        if (GetFlatSqrDistance(currentTarget.position) >
+            maximumDistance)
         {
             return false;
         }
 
-        CarrotFood carrot =
-            currentTarget.GetComponent<CarrotFood>();
-
-        if (carrot != null)
+        if (currentTarget.GetComponent<CarrotFood>() != null)
         {
-            return IsVisible(currentTarget);
+            return true;
         }
 
-        TreeFood tree =
-            currentTarget.GetComponent<TreeFood>();
-
-        if (tree != null)
+        if (currentTarget.GetComponent<TreeFood>() != null)
         {
-            return actor.TotalScale >= TreeFood.RequiredScale
-                && IsVisible(currentTarget);
+            return actor.TotalScale >= TreeFood.RequiredScale;
         }
 
         return false;
@@ -194,70 +187,11 @@ public sealed class AnimalAI : MonoBehaviour
         movement.SetSprinting(false);
     }
 
-    private bool IsVisible(Transform targetRoot)
-    {
-        Vector3 origin =
-            transform.position
-            + Vector3.up
-            * Mathf.Max(0.5f, actor.TotalScale * 0.5f);
-
-        Vector3 destination =
-            targetRoot.position + Vector3.up * 0.2f;
-
-        Vector3 direction =
-            destination - origin;
-
-        float distance = direction.magnitude;
-
-        if (distance <= 0.001f)
-        {
-            return true;
-        }
-
-        RaycastHit[] hits = Physics.RaycastAll(
-            origin,
-            direction.normalized,
-            distance,
-            ~0,
-            QueryTriggerInteraction.Collide
-        );
-
-        Array.Sort(
-            hits,
-            (first, second) =>
-                first.distance.CompareTo(second.distance)
-        );
-
-        foreach (RaycastHit hit in hits)
-        {
-            AnimalActor hitAnimal =
-                hit.collider.GetComponentInParent<AnimalActor>();
-
-            if (hitAnimal == actor)
-            {
-                continue;
-            }
-
-            Transform hitTransform =
-                hit.collider.transform;
-
-            if (hitTransform == targetRoot
-                || hitTransform.IsChildOf(targetRoot))
-            {
-                return true;
-            }
-
-            return false;
-        }
-
-        return false;
-    }
-
     private void UpdateWander()
     {
-        remainingTime -= Time.deltaTime;
+        wanderTimer -= Time.deltaTime;
 
-        if (remainingTime <= 0f)
+        if (wanderTimer <= 0f)
         {
             ChooseWanderAction();
         }
@@ -265,12 +199,12 @@ public sealed class AnimalAI : MonoBehaviour
 
     private void ChooseWanderAction()
     {
-        remainingTime = UnityEngine.Random.Range(
-            minimumDuration,
-            maximumDuration
+        wanderTimer = Random.Range(
+            MinimumWanderDuration,
+            MaximumWanderDuration
         );
 
-        if (UnityEngine.Random.value < idleChance)
+        if (Random.value < IdleChance)
         {
             movement.SetMoveInput(Vector2.zero);
             movement.SetSprinting(false);
@@ -278,18 +212,16 @@ public sealed class AnimalAI : MonoBehaviour
         }
 
         Vector2 direction =
-            UnityEngine.Random.insideUnitCircle.normalized;
+            Random.insideUnitCircle.normalized;
 
         movement.SetMoveInput(direction);
 
         movement.SetSprinting(
-            UnityEngine.Random.value < sprintChance
+            Random.value < SprintChance
         );
     }
 
-    private float GetFlatSqrDistance(
-        Vector3 targetPosition
-    )
+    private float GetFlatSqrDistance(Vector3 targetPosition)
     {
         Vector3 difference =
             targetPosition - transform.position;

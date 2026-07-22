@@ -5,14 +5,6 @@ public sealed class TreeFood : MonoBehaviour
 {
     public const float RequiredScale = 2.2f;
 
-    [SerializeField]
-    private float requiredScale =
-        RequiredScale;
-
-    [SerializeField]
-    private float growthAmount =
-        CarrotFood.ScaleValue;
-
     private bool eaten;
 
     private void OnCollisionEnter(Collision collision)
@@ -35,19 +27,17 @@ public sealed class TreeFood : MonoBehaviour
         AnimalActor animal =
             other.GetComponentInParent<AnimalActor>();
 
-        if (animal == null)
+        if (animal == null ||
+            animal.TotalScale < RequiredScale)
         {
             return;
         }
 
-        if (animal.TotalScale < requiredScale)
-        {
-            return;
-        }
-
+        // Prevent multiple collision callbacks from eating the same tree.
         eaten = true;
 
-        animal.AddTotalScale(growthAmount);
+        // Trees and carrots provide the same growth amount.
+        animal.AddTotalScale(CarrotFood.ScaleValue);
 
         Destroy(gameObject);
     }

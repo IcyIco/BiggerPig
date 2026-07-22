@@ -12,7 +12,7 @@ public static class AnimalAnimationDiagnostics
     [MenuItem("Tools/Animals/Diagnose Animation Setup")]
     public static void Diagnose()
     {
-        AnimalLibrary library = Object.FindObjectOfType<AnimalLibrary>();
+        AnimalLibrary library = Object.FindFirstObjectByType<AnimalLibrary>();
 
         if (library == null)
         {

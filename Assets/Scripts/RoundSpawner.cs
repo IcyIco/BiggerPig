@@ -1,99 +1,73 @@
-using System.Collections.Generic;
 using UnityEngine;
 
-public class RoundSpawner : MonoBehaviour
+public sealed class RoundSpawner : MonoBehaviour
 {
-    [Header("Round")]
+    private const int AiCount = 7;
+    private const int RequiredAnimalCount = AiCount + 1;
+
     [SerializeField] private AnimalLibrary animalLibrary;
     [SerializeField] private AnimalActor player;
     [SerializeField] private AnimalActor aiPrefab;
     [SerializeField] private Transform aiParent;
     [SerializeField] private Transform[] aiSpawnPoints;
 
-    private readonly List<AnimalActor> spawnedAI =
-        new List<AnimalActor>();
-
     private void Start()
     {
         SpawnRound();
     }
 
-    public void SpawnRound()
+    private void SpawnRound()
     {
-        AnimalDefinition[] animals =
-            animalLibrary.GetAnimals();
+        AnimalDefinition[] animals = animalLibrary.GetAnimals();
 
-        if (animals.Length < 8)
+        if (animals.Length < RequiredAnimalCount)
         {
             Debug.LogError(
-                "RoundSpawner: At least eight animals are required.",
+                $"RoundSpawner: At least {RequiredAnimalCount} animals are required.",
                 this
             );
-
             return;
         }
 
-        if (aiSpawnPoints.Length < 7)
+        if (aiSpawnPoints.Length < AiCount)
         {
             Debug.LogError(
-                "RoundSpawner: Seven spawn points are required.",
+                $"RoundSpawner: At least {AiCount} spawn points are required.",
                 this
             );
-
             return;
         }
 
-        ClearAI();
+        // Shuffle the copy without changing the Inspector list.
         Shuffle(animals);
 
         player.SetAnimal(animals[0]);
 
-        for (int i = 0; i < 7; i++)
+        for (int i = 0; i < AiCount; i++)
         {
-            Transform spawnPoint =
-                aiSpawnPoints[i];
+            Transform spawnPoint = aiSpawnPoints[i];
 
-            AnimalActor ai =
-                Instantiate(
-                    aiPrefab,
-                    spawnPoint.position,
-                    spawnPoint.rotation,
-                    aiParent
-                );
+            AnimalActor ai = Instantiate(
+                aiPrefab,
+                spawnPoint.position,
+                spawnPoint.rotation,
+                aiParent
+            );
 
             ai.SetAnimal(animals[i + 1]);
-
-            spawnedAI.Add(ai);
         }
     }
 
-    private void ClearAI()
+    private static void Shuffle(AnimalDefinition[] animals)
     {
-        foreach (AnimalActor ai in spawnedAI)
+        // Fisher-Yates gives every ordering an equal chance.
+        for (int i = animals.Length - 1; i > 0; i--)
         {
-            if (ai != null)
-            {
-                Destroy(ai.gameObject);
-            }
-        }
+            int randomIndex = Random.Range(0, i + 1);
 
-        spawnedAI.Clear();
-    }
-
-    private static void Shuffle<T>(T[] items)
-    {
-        for (
-            int i = items.Length - 1;
-            i > 0;
-            i--
-        )
-        {
-            int randomIndex =
-                Random.Range(0, i + 1);
-
-            T temporary = items[i];
-            items[i] = items[randomIndex];
-            items[randomIndex] = temporary;
+            AnimalDefinition temporary = animals[i];
+            animals[i] = animals[randomIndex];
+            animals[randomIndex] = temporary;
         }
     }
 }

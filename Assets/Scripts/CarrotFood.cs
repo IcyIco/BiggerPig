@@ -14,25 +14,16 @@ public sealed class CarrotFood : MonoBehaviour
     private Collider foodCollider;
     private Rigidbody rb;
     private bool collectible = true;
-    private bool eaten;
 
     private void Awake()
     {
         foodCollider = GetComponent<Collider>();
         foodCollider.isTrigger = true;
-
-        rb = GetComponent<Rigidbody>();
-
-        if (rb != null)
-        {
-            rb.useGravity = false;
-            rb.isKinematic = true;
-        }
     }
 
     private void OnTriggerEnter(Collider other)
     {
-        if (!collectible || eaten)
+        if (!collectible)
         {
             return;
         }
@@ -45,46 +36,26 @@ public sealed class CarrotFood : MonoBehaviour
             return;
         }
 
-        eaten = true;
+        // Prevent multiple animals from collecting the same carrot.
+        collectible = false;
 
         animal.AddTotalScale(ScaleValue);
-
         Destroy(gameObject);
     }
 
     public void Launch(Vector3 velocity)
     {
-        eaten = false;
+        // The carrot cannot be collected while it is airborne.
         collectible = false;
-
         foodCollider.isTrigger = false;
 
-        rb = GetComponent<Rigidbody>();
-
-        if (rb == null)
-        {
-            rb =
-                gameObject.AddComponent<Rigidbody>();
-        }
-
+        rb = gameObject.AddComponent<Rigidbody>();
         rb.mass = mass;
-        rb.useGravity = true;
-        rb.isKinematic = false;
-
-        rb.interpolation =
-            RigidbodyInterpolation.Interpolate;
-
+        rb.interpolation = RigidbodyInterpolation.Interpolate;
         rb.collisionDetectionMode =
             CollisionDetectionMode.ContinuousDynamic;
 
-        rb.linearVelocity = Vector3.zero;
-        rb.angularVelocity = Vector3.zero;
-
-        rb.AddForce(
-            velocity,
-            ForceMode.VelocityChange
-        );
-
+        rb.AddForce(velocity, ForceMode.VelocityChange);
         rb.AddTorque(
             Random.insideUnitSphere * spinForce,
             ForceMode.VelocityChange
@@ -95,26 +66,18 @@ public sealed class CarrotFood : MonoBehaviour
 
     private IEnumerator SettleRoutine()
     {
-        yield return new WaitForSeconds(
-            airborneDuration
-        );
+        yield return new WaitForSeconds(airborneDuration);
 
-        if (rb != null)
-        {
-            rb.linearVelocity = Vector3.zero;
-            rb.angularVelocity = Vector3.zero;
-            rb.useGravity = false;
-            rb.isKinematic = true;
-        }
+        rb.linearVelocity = Vector3.zero;
+        rb.angularVelocity = Vector3.zero;
+        rb.useGravity = false;
+        rb.isKinematic = true;
 
+        Destroy(rb);
+        rb = null;
+
+        // Return to a lightweight collectible trigger.
         foodCollider.isTrigger = true;
         collectible = true;
-
-        if (rb != null)
-        {
-            Rigidbody bodyToRemove = rb;
-            rb = null;
-            Destroy(bodyToRemove);
-        }
     }
 }

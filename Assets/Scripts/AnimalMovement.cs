@@ -5,30 +5,24 @@ using UnityEngine.InputSystem;
 public sealed class AnimalMovement : MonoBehaviour
 {
     [Header("Movement")]
-    [SerializeField] private float walkSpeed = 3f;
-    [SerializeField] private float runSpeed = 6f;
-    [SerializeField] private float rotationSpeed = 10f;
+    [SerializeField, Min(0f)] private float walkSpeed = 3f;
+    [SerializeField, Min(0f)] private float runSpeed = 6f;
+    [SerializeField, Min(0f)] private float rotationSpeed = 10f;
 
     [Header("References")]
     [SerializeField] private Transform modelSlot;
+
+    private static readonly int SpeedHash =
+        Animator.StringToHash("Speed");
 
     private Rigidbody rb;
     private Animator animator;
     private Vector2 moveInput;
     private bool isSprinting;
-    private bool controlEnabled = true;
-
-    private static readonly int SpeedHash =
-        Animator.StringToHash("Speed");
 
     private void Awake()
     {
         rb = GetComponent<Rigidbody>();
-
-        if (modelSlot == null)
-        {
-            modelSlot = transform.Find("ModelSlot");
-        }
 
         if (modelSlot == null)
         {
@@ -53,23 +47,12 @@ public sealed class AnimalMovement : MonoBehaviour
 
     public void SetMoveInput(Vector2 input)
     {
-        moveInput =
-            Vector2.ClampMagnitude(input, 1f);
+        moveInput = Vector2.ClampMagnitude(input, 1f);
     }
 
     public void SetSprinting(bool sprinting)
     {
         isSprinting = sprinting;
-    }
-
-    public void SetControlEnabled(bool value)
-    {
-        controlEnabled = value;
-
-        if (!controlEnabled && animator != null)
-        {
-            animator.SetFloat(SpeedHash, 0f);
-        }
     }
 
     public void OnMove(InputValue value)
@@ -84,30 +67,14 @@ public sealed class AnimalMovement : MonoBehaviour
 
     private void FixedUpdate()
     {
-        if (!controlEnabled)
-        {
-            if (animator != null)
-            {
-                animator.SetFloat(SpeedHash, 0f);
-            }
-
-            return;
-        }
-
         Vector3 direction =
-            new Vector3(
-                moveInput.x,
-                0f,
-                moveInput.y
-            );
+            new Vector3(moveInput.x, 0f, moveInput.y);
 
         bool isMoving =
             direction.sqrMagnitude > 0.001f;
 
         float speed =
-            isSprinting
-                ? runSpeed
-                : walkSpeed;
+            isSprinting ? runSpeed : walkSpeed;
 
         if (isMoving)
         {
@@ -125,12 +92,12 @@ public sealed class AnimalMovement : MonoBehaviour
                     Vector3.up
                 );
 
+            // Rotate the model without rotating the Rigidbody.
             modelSlot.rotation =
                 Quaternion.Slerp(
                     modelSlot.rotation,
                     targetRotation,
-                    rotationSpeed
-                    * Time.fixedDeltaTime
+                    rotationSpeed * Time.fixedDeltaTime
                 );
         }
 
